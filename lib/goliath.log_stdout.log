@@ -1,0 +1,4 @@
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/eventmachine-1.0.3/lib/eventmachine.rb:526:in `start_tcp_server': no acceptor (port is in use or requires root privileges) (RuntimeError)
+	from /Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/eventmachine-1.0.3/lib/eventmachine.rb:526:in `start_server'
+	from /Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/server.rb:86:in `block in start'
+	from /Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/em-synchrony-1.0.3/lib/em-synchrony.rb:38:in `block (2 levels) in synchrony'

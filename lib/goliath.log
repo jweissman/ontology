@@ -1,0 +1,22 @@
+[21874:INFO] 2013-03-29 22:12:09 :: Starting server on 0.0.0.0:8989 in production mode. Watch out for stones.
+[21874:ERROR] 2013-03-29 22:12:10 :: uninitialized constant Goliath::Response::Streaming
+[21874:ERROR] 2013-03-29 22:12:10 :: lib/ontology.rb:34:in `response'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/api.rb:163:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/rack/async_middleware.rb:73:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/rack-1.5.2/lib/rack/content_length.rb:14:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/async-rack-0.5.1/lib/async_rack/async_callback.rb:114:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/async-rack-0.5.1/lib/async_rack/async_callback.rb:91:in `block in new'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/request.rb:163:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/request.rb:163:in `block in process'
+[21874:INFO] 2013-03-29 22:12:10 :: Status: 500, Content-Length: 29, Response Time: 2.64ms
+[21930:INFO] 2013-03-29 22:12:23 :: Starting server on 0.0.0.0:8989 in production mode. Watch out for stones.
+[21874:ERROR] 2013-03-29 22:14:43 :: uninitialized constant Goliath::Response::Streaming
+[21874:ERROR] 2013-03-29 22:14:43 :: lib/ontology.rb:34:in `response'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/api.rb:163:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/rack/async_middleware.rb:73:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/rack-1.5.2/lib/rack/content_length.rb:14:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/async-rack-0.5.1/lib/async_rack/async_callback.rb:114:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/async-rack-0.5.1/lib/async_rack/async_callback.rb:91:in `block in new'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/request.rb:163:in `call'
+/Users/jweissman/.rvm/gems/ruby-1.9.3-p385/gems/goliath-1.0.1/lib/goliath/request.rb:163:in `block in process'
+[21874:INFO] 2013-03-29 22:14:43 :: Status: 500, Content-Length: 29, Response Time: 0.94ms
