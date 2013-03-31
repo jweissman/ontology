@@ -1,63 +1,97 @@
 require 'rubygems'
-require 'eventmachine'
-require 'socket'
+require 'bundler/setup'
 
-class World
-  attr_reader :value
-  def initialize
-    @value = 0
-  end
+require 'ostruct'
+require "active_support/core_ext"
+#require 'goliath'
+#require 'eventmachine'
+#require 'socket'
 
-  def step!
-    puts "=== world step!"
-    @value = @value + 1
-  end
+require 'ontology/version'
+require 'ontology/util/blank_slate'
+require 'ontology/util/rpc'
 
-  #def to_json
-  #  { :value => @value }
-  #end
+# high-level architetural structure
+# (here for organizational purposes and so we can shorthand in defs)
+module Ontology
+  # states, models, simulations
+  module Core end
+
+  # tools for tracking game worlds, players, maps, etc
+  module Game end
+
+  # streaming API for accessing details about the world
+  module API end
 end
 
-world = World.new
+require 'ontology/game/world'
+require 'ontology/game/world_server'
+require 'ontology/api/request_handler'
+require 'ontology/api/world_client'
+require 'ontology/api/async_world_client'
 
-module WorldServer
-  include EM::P::ObjectProtocol
-  def post_init
-    @obj = world
-  end
+# probably shouldn't require this here...
+#require 'ontology/core/driver'
 
-  def receive_object(method)
-    send_object @obj.__send__(*method)
-  end
 
-  def unbind
-    @obj = nil
-  end
-end
-
-EM.run{
-  FileUtils.rm '/tmp/world.sock' if File.exists? '/tmp/world.sock'
-  EM.start_server '/tmp/world.sock', WorldServer
-
-  # use a thread because the client is blocking
-  #Thread.new{
-  #  o = RPCClient.new
-  #  o[1] = :a
-  #  o[2] = :b
-  #  o[3] = :c
-  #  p o.keys
-  #  p o.values
-  #}
-  #
-  #o = AsyncRPCClient.new
-  #o[:A] = 99
-  #o[:B] = 98
-  #o[:C] = 97
-  #o.keys{ |keys| p(keys) }
-  #o.values{ |vals| p(vals) }
-  puts "==== ONTOLOGY"
-}
-
+#class World
+#  attr_reader :value
+#
+#  def initialize
+#    @value = 0
+#  end
+#
+#  def step!
+#    puts "=== world step! (#@value)"
+#    @value = @value + 1
+#  end
+#
+#  def to_hash
+#    { :value => @value }
+#  end
+#end
+#
+#$world = World.new
+#
+#module WorldServer
+#  include EM::P::ObjectProtocol
+#  def post_init
+#    @obj = $world
+#  end
+#
+#  def receive_object(method)
+#    send_object @obj.__send__(*method)
+#  end
+#
+#  def unbind
+#    @obj = nil
+#  end
+#end
+#
+#EM.run{
+#  FileUtils.rm '/tmp/world.sock' if File.exists? '/tmp/world.sock'
+#  EM.start_server '/tmp/world.sock', WorldServer
+#  EM.add_periodic_timer(1) { $world.step! }
+#
+#  # use a thread because the client is blocking
+#  #Thread.new{
+#  #  o = RPCClient.new
+#  #  o[1] = :a
+#  #  o[2] = :b
+#  #  o[3] = :c
+#  #  p o.keys
+#  #  p o.values
+#  #}
+#  #
+#  #o = AsyncRPCClient.new
+#  #o[:A] = 99
+#  #o[:B] = 98
+#  #o[:C] = 97
+#  #o.keys{ |keys| p(keys) }
+#  #o.values{ |vals| p(vals) }
+#  puts "==== ONTOLOGY SERVER RUNNING"
+#}
+#
 
 #require "ontology/version"
 ##require 'goliath'

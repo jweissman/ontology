@@ -1,6 +1,10 @@
 # Ontology
 
-TODO: Write a gem description
+The idea is to provide a simple platform for generating and simulating ongoing virtual "worlds" and expose an API for accessing/manipulating them. Additionally, if it's running locally you should be able to connect through a local UNIX socket to do RPC on the world being simulated.
+
+# About
+# Goals and Motivations
+ 
 
 ## Installation
 
@@ -18,7 +22,7 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+The API I'm thinking about would basically expose a streaming endpoint that clients could connect to over web sockets.
 
 ## Contributing
 
