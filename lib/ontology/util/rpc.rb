@@ -44,7 +44,7 @@ module RPC
 
   class AsyncClient < BlankSlate
     def initialize sock = '/tmp/rpc.sock'
-      @sock = EM.connect sock, Handler
+      @sock = EM.connect sock, RequestHandler
     end
     def method_missing *meth, &blk
       @sock.queue << blk

@@ -6,6 +6,12 @@ require "active_support/core_ext"
 #require 'goliath'
 #require 'eventmachine'
 #require 'socket'
+require 'em-websocket'
+
+# for apis/websockets
+#require 'goliath'
+#require 'goliath/websocket'
+#require 'goliath/rack/templates'
 
 require 'ontology/version'
 require 'ontology/util/blank_slate'

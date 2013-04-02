@@ -1,3 +1,0 @@
-#!/usr/bin/bash
-
-ruby ontology/api/worldstream.rb -e prod -p 8686 -s -v
