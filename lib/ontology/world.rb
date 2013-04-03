@@ -1,6 +1,5 @@
 class World
   include Celluloid
-  #include Celluloid::Notifications
 
   attr_accessor :state
   def initialize
@@ -10,13 +9,8 @@ class World
     @state.map = []
   end
 
-  def simulate #(env)
+  def simulate
     @state.value += 1
-    #puts "--- step...! (#{@state.value})"
-    #if @state.value % 10 == 0
-    #  puts "=== FOR YOU"
-    #  env.channel << ['world', 'OH YEAH FOR YOU']
-    #end
   end
 
   class << self
