@@ -4,7 +4,7 @@
   <title>Worldsockets...</title>
   <script src='http://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js'></script>
   <script>
-      var nickname = prompt("what shall thy nickname be, warrior?")
+      var nickname = prompt("what shall thy name be, warrior?")
 
       function debug(str)
       {
@@ -20,23 +20,31 @@
           }
 
           var ws = new WebSocket("ws://zephyr-breeze.local:9000/ws");
-          ws.onmessage = function(evt) { $("#msg").append("<p>" + evt.data + "</p>"); };
+          ws.onmessage = function(evt) {
+              msg = JSON.parse(evt.data);
+              console.log(msg);
+              if (msg['command'] === 'chat') {
+                $("#msg").append("<p>" + msg.name + ": " + msg.message + "</p>");
+              } else {
+                  console.log("--- got message: "+msg);
+              }
+          };
           ws.onclose   = function() { debug("socket closed"); };
           ws.onopen    = function() {
               debug("connected, sending 'world' command...");
               result = ws.send(JSON.stringify({
-                  command:'world',
-                  nickname:nickname}));
+                  command:'join',
+                  name: nickname}));
               console.log(result);
           };
 
           $('#submit').click(function()
           {
-              var nick = nickname; //$('#nick').val();
+              var nick = name; //$('#nick').val();
               var msg = $('#message').val();
               ws.send(JSON.stringify({
                   command:'chat',
-                  nickname:nickname,
+                  name:name,
                   message:msg}));
               return false;
           });
