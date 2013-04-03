@@ -1,3 +1,4 @@
+require 'ontology'
 
 # use a thread because the client is blocking
 #Thread.new{
@@ -15,7 +16,7 @@
 #o[:C] = 97
 #o.keys{ |keys| p(keys) }
 #o.values{ |vals| p(vals) }
-
+$stdout.sync = true
 
 class Ontology::Core::Driver
 
@@ -31,16 +32,16 @@ class Ontology::Core::Driver
       EM.run{
         puts "*********************** ontology server #{Ontology::VERSION} running ***********************"
 
-        FileUtils.rm '/tmp/world.sock' if File.exists? '/tmp/world.sock'
-        EM.start_server '/tmp/world.sock', Ontology::Game::WorldServer
+        FileUtils.rm '/tmp/rpc.sock' if File.exists? '/tmp/rpc.sock'
+        EM.start_server '/tmp/rpc.sock', Ontology::Game::WorldServer
 
-        EM.add_periodic_timer(1) {
-          Ontology::Game::World.current.step!
-          if @interrupted
-            puts "--- bye!"
-            exit
-          end
-        }
+        #EM.add_periodic_timer(1) {
+        #  Ontology::Game::World.current.step!
+        #  if @interrupted
+        #    puts "--- bye!"
+        #    exit
+        #  end
+        #}
       }
     end
 
@@ -53,3 +54,4 @@ class Ontology::Core::Driver
   end
 end
 
+Ontology::Core::Driver.launch!

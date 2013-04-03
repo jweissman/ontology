@@ -7,9 +7,9 @@ class Ontology::Game::World # < Ontology::Core::Simulation
     end
   end
 
-  def initialize(callback=nil)
-    @aqmp_node = RJR::AQMPNode.new :node_id => 'worlds-core', :broker => 'localhost'
-    puts puts amqp_node.invoke_request('hello', 'worldscore!')
+  def initialize #(callback=nil)
+    #@aqmp_node = RJR::AQMPNode.new :node_id => 'worlds-core', :broker => 'localhost'
+    #puts puts amqp_node.invoke_request('hello', 'worldscore!')
 
     @state = OpenStruct.new
     @state.value = 0
@@ -34,7 +34,7 @@ class Ontology::Game::World # < Ontology::Core::Simulation
     puts "=== state: #@state"
     @state.value += 1
     #fire!(:step)
-    @aqmp_node.invoke_request('msg',"update: #@state")
+    #@aqmp_node.invoke_request('msg',"update: #@state")
   end
 
   def to_s

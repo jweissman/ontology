@@ -5,16 +5,16 @@ require 'eventmachine'
 require 'socket'
 
 module RPC
-  module AbstractServer
-    attr_reader :obj
-    include EM::P::ObjectProtocol
-    def receive_object method
-      send_object @obj.__send__(*method)
-    end
-    def unbind
-      @obj = nil
-    end
-  end
+  #module AbstractServer
+  #  attr_reader :obj
+  #  include EM::P::ObjectProtocol
+  #  def receive_object method
+  #    send_object @obj.__send__(*method)
+  #  end
+  #  def unbind
+  #    @obj = nil
+  #  end
+  #end
 
   class Client < BlankSlate
     def initialize sock = '/tmp/rpc.sock'
@@ -27,7 +27,11 @@ module RPC
     end
   end
 
-  module RequestHandler
+  #module RequestHandler
+
+  #end
+
+  class AsyncClient < BlankSlate
     module Handler
       include EM::P::ObjectProtocol
       def post_init
@@ -40,11 +44,8 @@ module RPC
         end
       end
     end
-  end
-
-  class AsyncClient < BlankSlate
     def initialize sock = '/tmp/rpc.sock'
-      @sock = EM.connect sock, RequestHandler
+      @sock = ::EM.connect sock, Handler
     end
     def method_missing *meth, &blk
       @sock.queue << blk
