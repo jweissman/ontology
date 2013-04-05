@@ -35,12 +35,13 @@ class Server < Goliath::WebSocket
     env.logger.debug "--- command: #{command}"
     env.logger.debug "--- player: #{player_name}"
 
-    result = { :command => command, :status => 200 }
+    result = { :command => command, :status => 200, :player => player_name, :player_id => env['player_id'] }
     if command == 'join'
-      World.current.add_player(player_name)
+      World.current.add_player(env['player_id'], player_name)
       result[:players] = World.current.players.map do |player|
         env.logger.debug player.inspect
         {
+          id:             player.id,
           name:           player.name,
           position:       player.position
         }
@@ -49,29 +50,15 @@ class Server < Goliath::WebSocket
     #elsif command == 'bye'
     #  World.current.remove_player(name)
     else
-      player = World.current.player_named(name)
+      player = Player.find_by_name(player_name)
       return unless player
-      # a few things we can do in common for real commands
-      #player_id = body['player_id']
-      #player = World.current.players.select { |p| p.id == player_id }.first
 
       if command == 'chat'
-        msg = body['message']
-        {
-          :command  => 'chat',
-          :name     => name,
-          :message  => msg
-        }
+        result[:message] = body['message']
       elsif command == 'move'
         direction = body['direction']
         moved = World.current.move_player(player, direction)
-        if moved
-          {
-            :command  => 'move',
-            :name     => name,
-            :position => player.position
-          }
-        end
+        result[:position] = player.position if moved
       # TODO elsif command == 'use'
 
       end
@@ -104,6 +91,7 @@ end
 $stdout.sync = true
 
 # kick off world simulation... (probably best in a separate process, but for now anyway...)
+# TODO this is a whole world of problems :/ figure out a better way to supervise this
 World.current.every(0.5) do
   World.current.simulate #(env)
 #  if World.current.state.value % 10 == 0
