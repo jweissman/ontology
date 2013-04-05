@@ -1,9 +1,11 @@
-module RpgZero
-  #class Player < Ontology::Model; end
-  #class PlayerController < Ontology::Controller; end
+# TODO extract rpg logic here :(
 
-
-  class World < Ontology::World
-
-  end
-end
+#module RpgZero
+#  #class Player < Ontology::Model; end
+#  #class PlayerController < Ontology::Controller; end
+#
+#
+#  class World < Ontology::World
+#
+#  end
+#end

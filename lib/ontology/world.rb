@@ -1,6 +1,7 @@
-class Player
+class Player #< Struct.new(:name, :position)
   attr_accessor :name, :position
   def initialize(name, position)
+    puts "--- creating new player at #{position} wiht name #{name}"
     @name = name
     @position = position
   end
@@ -11,7 +12,16 @@ class Map
   def initialize(opts={})
     @height = opts[:height] || 10
     @width  = opts[:width]  || 10
-    @cells  = Array.new(@height) { Array.new(@width) {0}}
+    @cells  = opts[:cells]  || [[0,1,1,0,1,1,0],
+                                [0,0,0,0,0,0,0],
+                                [1,1,0,1,1,0,0],
+                                [0,0,0,0,0,0,1],
+                                [0,1,0,0,0,1,0],
+                                [0,1,0,0,1,1,0],
+                                [0,1,0,0,0,1,1],
+                                [1,1,0,1,1,0,0],
+                                [0,0,0,0,1,0,1],
+                                [1,1,1,0,1,0,0]]
   end
 
   def each_position
@@ -44,8 +54,13 @@ class World
     open
   end
 
-  def add_player name
-    @players << Player.new(name, open_positions.sample)
+  def add_player name='Default Name'
+    puts "=== was told to add player with name: #{name}"
+    open_pos  = open_positions.sample
+    player    = Player.new(name, open_pos)
+    @players << player
+    puts "--- added player: #{player.inspect}"
+    player
   end
 
   def player_named name
@@ -59,8 +74,9 @@ class World
 
   def move_player name, direction
     target_cell = translate_position(player_named(name).position, direction)
-    raise "Invalid move" unless open_positions.include? target_cell
+    return false unless open_positions.include? target_cell
     player_named(name).position = target_cell
+    true
   end
 
   def simulate
