@@ -1,11 +1,12 @@
 require 'ontology'
+
 require 'json'
+require 'celluloid'
 
 CHANNEL = EM::Channel.new
 
 class Server < Goliath::WebSocket
   include Goliath::Rack::Templates
-  include Celluloid
 
   def channel; CHANNEL end
 
@@ -14,7 +15,7 @@ class Server < Goliath::WebSocket
   def on_open(env)
     env.logger.info "WS OPEN"
 
-    env['player_id'] = SecureRandom.uuid
+    #env['player_id'] = SecureRandom.uuid
     env['subscription'] = channel.subscribe do |m|
       env.stream_send(m)
     end
@@ -37,20 +38,22 @@ class Server < Goliath::WebSocket
 
     result = { :command => command, :status => 200, :player => player_name, :player_id => env['player_id'] }
     if command == 'join'
-      World.current.add_player(env['player_id'], player_name)
+      World.current.join(player_name)
+      #env['player_id'] = player.id
+
       result[:players] = World.current.players.map do |player|
-        env.logger.debug player.inspect
+        #env.logger.debug player.inspect
         {
           id:             player.id,
           name:           player.name,
           position:       player.position
         }
       end
-      result[:map] = World.current.map.cells
+      result[:map] = World.current.game_map.rows
     #elsif command == 'bye'
     #  World.current.remove_player(name)
     else
-      player = Player.find_by_name(player_name)
+      player = Player.all(name: player_name).first
       return unless player
 
       if command == 'chat'
@@ -58,7 +61,7 @@ class Server < Goliath::WebSocket
       elsif command == 'move'
         direction = body['direction']
         env.logger.debug "--- okay! "
-        moved = World.current.move_player(player, direction)
+        moved = World.current.move(player, direction)
         result[:position] = player.position if moved
       # TODO elsif command == 'use'
 
@@ -87,15 +90,4 @@ class Server < Goliath::WebSocket
       [200, {}, erb(:index, :views => Goliath::Application.root_path('views'))]
     end
   end
-end
-
-$stdout.sync = true
-
-# kick off world simulation... (probably best in a separate process, but for now anyway...)
-# TODO this is a whole world of problems :/ figure out a better way to supervise this
-World.current.every(0.5) do
-  World.current.simulate #(env)
-#  if World.current.state.value % 10 == 0
-#    CHANNEL << '...'
-#  end
 end

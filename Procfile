@@ -1,2 +1,2 @@
-world:   ruby lib/ontology/server.rb -sv
-#game:    ruby lib/ontology/api/world_socket.rb -sv
+world:  ruby lib/ontology/server.rb -sv
+hose:   firehose server

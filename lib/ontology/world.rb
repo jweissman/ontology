@@ -1,217 +1,197 @@
-# TODO validate on create...
-require 'active_model'
+require 'data_mapper'
+require 'minotaur'
 
-# TODO integrate warden and get a remotely adult-looking auth layer
-
-class Player #< Struct.new(:name, :position)
-  #include DataMapper::Resource ...?
-  include ActiveModel::Validations
-
-  # TODO move to support...
-  class UniqueValidator < ActiveModel::EachValidator
-    def validate_each(record, attribute, value)
-      record.errors.add attribute, "must be unique" if record.class.any? { |p| value == p.attributes[attribute] }
-    end
-  end
-
-  attr_accessor :id, :name, :position
-
-  validates_presence_of :id, :name, :position
-  validates :name, :unique => true, :presence => true
-
-  def attributes #(key)
-    @attributes ||= {} #[key]
-  end
-
-  class << self
-    def registry
-      @registry ||= {}
-    end
-
-    def register!(instance)
-      puts "=== Attempting to register #{instance.inspect}"
-      puts "--- Current registry: #{registry.inspect}"
-      unless instance.valid?
-        raise "Invalid #{instance.class.name}: #{instance.errors}"
-      end
-
-      registry[instance.id] = instance
-    end
-
-    def all
-      registry.values
-    end
-
-    def any?(&blk); all.any?(&blk) end
-
-    def exists?(id); any? { |r| r.id == id } end
-
-    def find_by_name(name)
-      puts "--- players: #{all.inspect}"
-      puts "=== attempting to find player with name #{name}"
-
-      all.select { |p| p.name == name }.first
-    end
-
-    def create!(attributes={})
-      new(attributes).save!
-    end
-  end
-
-  def initialize(attrs={}) # aid, name, position)
-    unless attrs.nil?
-      attrs.each do |name, value|
-        send("#{name}=", value)
-      end
-    end
-    @attributes = attrs
-
-    #puts "--- creating new player at #{position} with name #{name}"
-    @id       = SecureRandom.uuid
-    @attributes[:id] = @id
-
-
-    #if valid?
-    #  Player.register!(self)
-    #else
-      #raise "Player isn't valid!"
-      #puts "--- Player errors: #{errors}"
-    #end
-
-  end
-
-  def save!
-    puts "--- Attempting to register player!"
-    Player.register!(self)
-  end
-
-  def read_attribute_for_validation(key)
-    @attributes[key]
-  end
-
-  # if player_name is unique...?
-  #def add_player id, name='Default Name'
-  #  #puts "=== was told to add player with name: #{name}"
-  #  open_pos  = open_positions.sample
-  #  player    = Player.new(id, name, open_pos)
-  #  @players << player
-  #  #puts "--- added player: #{player.inspect}"
-  #  player
-  #end
-  #
-  #def player_named name
-  #  @players.reject { |p| p.name != name }.first
-  #end
-end
-
-class Map
-  attr_accessor :cells, :height, :width
-  def initialize(opts={})
-    @height = opts[:height] || 10
-    @width  = opts[:width]  || 10
-    @cells  = opts[:cells]  || [[0,1,1,0,1,1,0,1,0],
-                                [0,0,0,0,0,1,0,0,0],
-                                [1,1,0,1,1,1,0,0,0],
-                                [0,0,0,0,0,1,0,0,1],
-                                [0,1,0,1,0,0,0,1,0],
-                                [0,1,0,0,1,0,1,1,0],
-                                [0,1,0,0,0,1,0,1,1],
-                                [1,1,0,1,1,0,1,0,0],
-                                [0,0,0,0,1,1,0,0,1],
-                                [1,1,1,0,1,0,1,0,0]]
-  end
-
-  def each_position
-    (@width-1).times do |x|
-      (@height-1).times do |y|
-        yield [1+x,1+y]
-      end
-    end
-  end
-
-  def each_open_position(player_positions)
-    each_position do |position|
-      yield position unless player_positions.include?(position)
-    end
+class Fixnum
+  def to_json(options = nil)
+    to_s
   end
 end
 
+# TODO cleanup the below...
+#class Model
+#  include DataMapper::Resource
+#  # logic for talking with firehose
+#end
+#
+#class Actor
+#  include Celluloid
+#  # logic for talking with websocket clients?
+#end
+
+class Player
+  include DataMapper::Resource
+
+  property :id,   Serial
+  property :name, String, :default => 'Guest'
+  property :position, Json # :default => [0,0]
+
+  property :last_moved_tick, Integer
+
+  property :speed, Integer, :default => 14 # smaller is faster (less frames between move-throttling)
+
+  validates_uniqueness_of :name
+  validates_uniqueness_of :position
+
+  #def position
+  #  [x, y]
+  #end
+
+  def next_active_tick(current_tick=World.current.tick)
+    [(last_moved_tick+speed), current_tick].max
+  end
+end
+
+#
+# (keep thinking i should just go ahead and submodule minotaur at this rate...)
+#  [ done! ]
+#
+class GameMap #< Minotaur::Geometry::Grid
+  include DataMapper::Resource
+  #include Celluloid
+  #extend Minotaur::Extruders::RecursiveBacktrackingExtruder
+
+  property :id,    Serial
+  property :name,  String
+
+  property :width,  Integer, :default => 10
+  property :height, Integer, :default => 10
+  property :rows,   Json,    :default => lambda { |r,p| r.labyrinth.rows }
+    #l = r.labyrinth
+    #puts "--- got labyrinth: "
+    #puts l.inspect
+    #puts "--- rows: "
+    #puts l.rows.inspect
+    #puts "--- rows to s: "
+    #puts l.rows.to_s
+    #puts "----"
+    #l.rows #.to_s
+  #}
+
+  def labyrinth
+    @labyrinth ||= Minotaur::Labyrinth.new({
+      width: @width,
+      height: @height
+    })
+  end
+
+  # all stuff from minotaur's grid ... need to make that a module or helpers
+  def at(position)
+    self.rows[position.y][position.x]
+  end
+
+
+
+  def empty?(position)
+    at(position).zero?
+  end
+
+  def all_positions
+    all = []
+    Minotaur::Geometry::Grid.each_position(self.width,self.height) { |pos| all << pos }
+    all
+  end
+
+  def all_empty_positions
+    all_positions.select { |position| empty?(position) }
+  end
+end
 
 class World
+  include DataMapper::Resource
   include Celluloid
-  attr_accessor :players, :map
-  def initialize
-    #@players = []
-    @map = Map.new
+  include Minotaur::Geometry::Directions
+
+  DIRECTIONS = {n: NORTH, e: EAST, s: SOUTH, w: WEST}
+
+  has 1, :game_map
+  has n, :players
+
+  property :id,  Serial
+  property :name, String
+
+  property :tick, Integer, :default => 0
+
+  task_class TaskThread
+
+  def self.current
+    @@current ||= construct
+  end
+
+  def self.construct
+     World.create({name: 'Hello', game_map: GameMap.create(name: 'Worlddds!')})
   end
 
   def open_positions
-    open = []
-    @map.each_open_position(players.map(&:position)) { |p| open << p }
-    open
+    game_map.all_empty_positions - players.all(&:positions)
   end
 
-  def players; Player.all end
+  def scheduled_updates
+    @scheduled_updates ||= []
+  end
 
-  # if player_name is unique...?
-  def add_player id, name='Default Name'
-    #puts "=== was told to add player with name: #{name}"
-    if Player.exists?(id) || Player.any? { |p| p.name == name }
-      puts "=== was asked to add a player, but just chilling as it seems that player exists (or another has the same name/id...?)"
-    else
-      open_pos  = open_positions.sample
-      Player.create!({id: id, name: name, position: open_pos})
+  def schedule_update(t,&block)
+    @scheduled_updates << [t,block] if block_given?
+  end
+
+  def join(player_name)
+    puts "--- join!"
+    Player.create({name:player_name,position:open_positions.sample})
+  end
+
+  def move(player, direction)
+    puts "--- move!"
+    target = player.position.translate(DIRECTIONS(direction.slice(0,1).downcase.to_sym))
+    return false unless open_positions.include?(target)
+    schedule_update(player.next_active_tick) do
+      player.position = target
+      player.save!
     end
-
-    #player.save! if player.valid?
-    #@players << player
-    #if player.valid?
-    #   player
-    #else
-      #puts "=== #{player.errors}"
-    #end
-    #puts "--- added player: #{player.inspect}"
-    #player
-  end
-  #
-  #def player_named name
-  #  @players.reject { |p| p.name != name }.first
-  #end
-
-  COMPASS = {n: [0,-1], e: [1,0], s: [0,1], w:[-1,0] }
-  def translate_position position, direction='north'
-    puts "--- attempting to translate #{position.inspect} in direction #{direction}"
-    offset = COMPASS[direction.slice(0,1).downcase.to_sym]
-    [position,offset].transpose.map{|x| x.reduce(:+)}
   end
 
-  def move_player player, direction
-    #player = Player.find_by_name(name)
-    puts "--- attempting to move player: #{player}"
-    target = translate_position(player.position, direction)
-    puts "--- target cell: #{target}"
-    puts "--- open positions: #{open_positions}"
-    open = open_positions.include?(target)
-    puts "--- open? #{open}"
-    return false unless open #_positions.include? target
-
-    # TODO schedule/'pace' movement (ideally based on character 'speed'...?)
-    puts "=== updating player position (should 'schedule' this)"
-    player.position = target
-    true
-  end
-
-  def simulate
-    #@state.value += 1
-
-    # currently a no-op :(
-
-    # it's okay! :) promise...
-  end
-
-  class << self
-    def current
-      @current ||= World.new
+  # tick! is expecting to be called every 65ms or so
+  def step
+    if @tick
+      puts "--- update! #@tick"
+      #puts "=== why don't we have a tick?!"
+      @tick += 1
+      updates_to_remove = []
+      scheduled_updates.each_with_index do |(t,update_block),n|
+        if t==@tick
+          puts "--- running scheduled update!"
+          update_block.call
+          updates_completed << n
+        end
+      end
+      updates_to_remove.each { |n| @scheduled_updates.delete_at(n) }
     end
+    save!
   end
 end
+
+
+
+## setup dm #####
+DataMapper.finalize
+
+DataMapper::Logger.new($stdout, :debug)
+
+# in-memory sqlite db
+DataMapper.setup(:default, 'sqlite::memory:')
+
+DataMapper.auto_migrate!
+
+$stdout.sync = true
+
+## kick off simulation ####
+
+## TODO this is a whole world of problems :/ figure out a better way to supervise this
+
+puts "=== kicking off simulation!"
+
+world = World.new
+
+# not great, crashes the api if the simulation goes down... :(
+world.every(0.66) { |_|
+  puts "---tick"
+  world.step
+}
