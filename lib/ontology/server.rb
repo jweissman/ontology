@@ -57,6 +57,7 @@ class Server < Goliath::WebSocket
         result[:message] = body['message']
       elsif command == 'move'
         direction = body['direction']
+        env.logger.debug "--- okay! "
         moved = World.current.move_player(player, direction)
         result[:position] = player.position if moved
       # TODO elsif command == 'use'

@@ -47,6 +47,9 @@ class Player #< Struct.new(:name, :position)
     def exists?(id); any? { |r| r.id == id } end
 
     def find_by_name(name)
+      puts "--- players: #{all.inspect}"
+      puts "=== attempting to find player with name #{name}"
+
       all.select { |p| p.name == name }.first
     end
 
@@ -176,14 +179,25 @@ class World
   #end
 
   COMPASS = {n: [0,-1], e: [1,0], s: [0,1], w:[-1,0] }
-  def translate_position position, direction
-    position + COMPASS[direction.slice(0,1).downcase.to_sym]
+  def translate_position position, direction='north'
+    puts "--- attempting to translate #{position.inspect} in direction #{direction}"
+    offset = COMPASS[direction.slice(0,1).downcase.to_sym]
+    [position,offset].transpose.map{|x| x.reduce(:+)}
   end
 
-  def move_player name, direction
-    target_cell = translate_position(player_named(name).position, direction)
-    return false unless open_positions.include? target_cell
-    Player.find_by_name(name).position = target_cell
+  def move_player player, direction
+    #player = Player.find_by_name(name)
+    puts "--- attempting to move player: #{player}"
+    target = translate_position(player.position, direction)
+    puts "--- target cell: #{target}"
+    puts "--- open positions: #{open_positions}"
+    open = open_positions.include?(target)
+    puts "--- open? #{open}"
+    return false unless open #_positions.include? target
+
+    # TODO schedule/'pace' movement (ideally based on character 'speed'...?)
+    puts "=== updating player position (should 'schedule' this)"
+    player.position = target
     true
   end
 
