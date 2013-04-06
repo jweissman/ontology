@@ -38,11 +38,12 @@ class Server < Goliath::WebSocket
 
     result = { :command => command, :status => 200, :player => player_name, :player_id => env['player_id'] }
     if command == 'join'
+      puts "--- handling join..."
       World.current.join(player_name)
       #env['player_id'] = player.id
 
+      puts "--- assembling results..."
       result[:players] = World.current.players.map do |player|
-        #env.logger.debug player.inspect
         {
           id:             player.id,
           name:           player.name,

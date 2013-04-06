@@ -53,20 +53,18 @@ class GameMap #< Minotaur::Geometry::Grid
   property :id,    Serial
   property :name,  String
 
-  property :width,  Integer, :default => 10
-  property :height, Integer, :default => 10
-  property :rows,   Json,    :default => lambda { |r,p| r.labyrinth.rows }
-    #l = r.labyrinth
-    #puts "--- got labyrinth: "
-    #puts l.inspect
-    #puts "--- rows: "
-    #puts l.rows.inspect
-    #puts "--- rows to s: "
-    #puts l.rows.to_s
-    #puts "----"
-    #l.rows #.to_s
+  property :width,   Integer, :default => 10
+  property :height,  Integer, :default => 10
+  property :rows,    Json,    :default => lambda { |r,p| r.labyrinth.to_a.to_json }
+  #property :labyrinth, Object, :default => lambda { |r,p|
+  #  Minotaur::Labyrinth.new({
+  #      width: r.width/2,
+  #      height: r.height/2
+  #  })
   #}
 
+
+  attr_accessor :labyrinth
   def labyrinth
     @labyrinth ||= Minotaur::Labyrinth.new({
       width: @width,
@@ -76,10 +74,10 @@ class GameMap #< Minotaur::Geometry::Grid
 
   # all stuff from minotaur's grid ... need to make that a module or helpers
   def at(position)
-    self.rows[position.y][position.x]
+    #puts "--- attempting to consider position #{position} in labyrinth: "
+    #p labyrinth
+    rows[position.y][position.x]
   end
-
-
 
   def empty?(position)
     at(position).zero?
@@ -135,7 +133,12 @@ class World
 
   def join(player_name)
     puts "--- join!"
-    Player.create({name:player_name,position:open_positions.sample})
+    new_position = open_positions.sample
+
+    puts "=== player attempting to be placed at #{new_position}"
+    puts "--- #{new_position.inspect}"
+
+    Player.create({name:player_name,position:[new_position.x,new_position.y]})
   end
 
   def move(player, direction)
@@ -143,7 +146,9 @@ class World
     target = player.position.translate(DIRECTIONS(direction.slice(0,1).downcase.to_sym))
     return false unless open_positions.include?(target)
     schedule_update(player.next_active_tick) do
-      player.position = target
+      puts "--- attempting to assign new player position..."
+      #puts "--- current position: #{player}"
+      player.position = target #.load(target.to_json)
       player.save!
     end
   end
@@ -188,10 +193,10 @@ $stdout.sync = true
 
 puts "=== kicking off simulation!"
 
-world = World.new
+#world = World.current
 
 # not great, crashes the api if the simulation goes down... :(
-world.every(0.66) { |_|
+World.current.every(0.66) { |_|
   puts "---tick"
-  world.step
+  World.current.step
 }
