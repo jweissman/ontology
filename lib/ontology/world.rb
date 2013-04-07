@@ -1,5 +1,8 @@
 require 'data_mapper'
+require 'dm-serializer/to_json'
 require 'minotaur'
+
+CHANNEL = EM::Channel.new
 
 class Fixnum
   def to_json(options = nil)
@@ -7,75 +10,63 @@ class Fixnum
   end
 end
 
-# TODO cleanup the below...
-#class Model
-#  include DataMapper::Resource
-#  # logic for talking with firehose
-#end
-#
-#class Actor
-#  include Celluloid
-#  # logic for talking with websocket clients?
-#end
-
 class Player
   include DataMapper::Resource
 
   property :id,   Serial
   property :name, String, :default => 'Guest'
-  property :position, Json # :default => [0,0]
+  property :x, Integer
+  property :y, Integer
+  property :last_moved_tick, Integer, :default => 0
 
-  property :last_moved_tick, Integer
+  property :status, Enum[ :resting, :moving, :fighting, :tired, :sick, :injured, :dead ], :default => :resting
 
   property :speed, Integer, :default => 14 # smaller is faster (less frames between move-throttling)
 
   validates_uniqueness_of :name
-  validates_uniqueness_of :position
 
-  #def position
-  #  [x, y]
-  #end
+  def position
+    Minotaur::Geometry::Position.new(x,y)
+  end
 
   def next_active_tick(current_tick=World.current.tick)
+    puts "=== next active tick? (given current tick #{current_tick})"
     [(last_moved_tick+speed), current_tick].max
+  end
+
+  def to_hash
+    {
+      id:       id,
+      name:     name,
+      position: [x,y]
+    }
   end
 end
 
-#
-# (keep thinking i should just go ahead and submodule minotaur at this rate...)
-#  [ done! ]
-#
-class GameMap #< Minotaur::Geometry::Grid
+class GameMap
   include DataMapper::Resource
-  #include Celluloid
-  #extend Minotaur::Extruders::RecursiveBacktrackingExtruder
 
   property :id,    Serial
   property :name,  String
 
-  property :width,   Integer, :default => 10
-  property :height,  Integer, :default => 10
-  property :rows,    Json,    :default => lambda { |r,p| r.labyrinth.to_a.to_json }
-  #property :labyrinth, Object, :default => lambda { |r,p|
-  #  Minotaur::Labyrinth.new({
-  #      width: r.width/2,
-  #      height: r.height/2
-  #  })
-  #}
-
+  property :width,   Integer, :default => 5
+  property :height,  Integer, :default => 5
+  property :rows,    Json,    :default => lambda { |r,p| [[1,1,1,1,1],
+                                                          [1,0,0,0,1],
+                                                          [1,0,0,0,1],
+                                                          [1,0,0,0,1],
+                                                          [1,1,1,1,1]].to_json } # r.labyrinth.to_a.to_json }
 
   attr_accessor :labyrinth
   def labyrinth
     @labyrinth ||= Minotaur::Labyrinth.new({
-      width: @width,
+      width: @width/2,
       height: @height
     })
   end
 
   # all stuff from minotaur's grid ... need to make that a module or helpers
   def at(position)
-    #puts "--- attempting to consider position #{position} in labyrinth: "
-    #p labyrinth
     rows[position.y][position.x]
   end
 
@@ -127,29 +118,52 @@ class World
     @scheduled_updates ||= []
   end
 
-  def schedule_update(t,&block)
-    @scheduled_updates << [t,block] if block_given?
+  def schedule_update(t,opts={},&block)
+    puts "--- scheduling update..."
+    @scheduled_updates << [t,opts,block] if block_given?
   end
 
   def join(player_name)
     puts "--- join!"
     new_position = open_positions.sample
-
     puts "=== player attempting to be placed at #{new_position}"
     puts "--- #{new_position.inspect}"
-
-    Player.create({name:player_name,position:[new_position.x,new_position.y]})
+    players << Player.create({name:player_name,x:new_position.x,y:new_position.y})
   end
 
+  COMPASS = {:n => NORTH, :e => EAST, :w => WEST, :s => SOUTH}
   def move(player, direction)
-    puts "--- move!"
-    target = player.position.translate(DIRECTIONS(direction.slice(0,1).downcase.to_sym))
-    return false unless open_positions.include?(target)
-    schedule_update(player.next_active_tick) do
-      puts "--- attempting to assign new player position..."
-      #puts "--- current position: #{player}"
-      player.position = target #.load(target.to_json)
+    return if player.status == :moving
+    puts "=== move #{player} #{direction}!"
+    x, y = player.x, player.y
+    puts "--- to #{x}, #{y}"
+    direction = direction.slice(0,1).downcase.to_sym
+    puts "--- direction #{direction}, checking compass"
+    if COMPASS.has_key?(direction)
+      dir = COMPASS[direction]
+      target = Minotaur::Geometry::Position.new(DX[dir]+x, DY[dir]+y)
+      puts "--- target position is #{target}"
+      open = open_positions.include?(target)
+      puts "--- is target position open?! #{open} #{game_map.at(target)}"
+      puts game_map.rows.inspect
+      return false unless open #_positions.include?(target)
+      player.status = :moving
       player.save!
+      puts "=== scheduling update!!!!"
+      schedule_update(player.next_active_tick, {target: target}) do |opts|
+        target = opts[:target]
+        puts "--- attempting to assign new player position #{target}..."
+        player.x = target.x
+        player.y = target.y
+        player.status = :resting
+        player.save!
+        #CHANNEL << { :command => 'move', :player => player.name, :x => target.x, :y => target.y }.to_json
+        broadcast_snapshot
+        puts "--- moved to position #{target}!"
+      end
+      true
+    else
+      false
     end
   end
 
@@ -157,19 +171,35 @@ class World
   def step
     if @tick
       puts "--- update! #@tick"
-      #puts "=== why don't we have a tick?!"
       @tick += 1
       updates_to_remove = []
-      scheduled_updates.each_with_index do |(t,update_block),n|
-        if t==@tick
+
+      puts "=== checking for updates ******************************"
+      scheduled_updates.each_with_index do |(t,opts,update_block),n|
+        puts "--- checking on tasked schedule to be run at t=#{t}"
+        if t <= @tick
           puts "--- running scheduled update!"
-          update_block.call
-          updates_completed << n
+          update_block.call(opts)
+          updates_to_remove << n
         end
       end
       updates_to_remove.each { |n| @scheduled_updates.delete_at(n) }
     end
     save!
+  end
+
+  def broadcast_snapshot
+    #snapshot = World.current.to_hash # to_json(:element_name => 'world')
+    #if @players.count > 0
+    snapshot = {command: 'snapshot', tick: @tick}
+    snapshot[:players] = players.map(&:to_hash) if players
+    snapshot[:map] = game_map.rows
+    #CHANNEL << snapshot #{command: 'snapshot', tick: @tick, players: player_hash, map: map}
+     #{ #:command => 'snapshot', :tick => @tick, :players => @players.map(&:to_hash), :map => @game_map.rows }
+    #end
+    puts "---- broadcasting snapshot!"
+    CHANNEL << snapshot.to_json
+    snapshot
   end
 end
 
@@ -196,7 +226,7 @@ puts "=== kicking off simulation!"
 #world = World.current
 
 # not great, crashes the api if the simulation goes down... :(
-World.current.every(0.66) { |_|
-  puts "---tick"
+World.current.every(0.066) do
+  World.current.broadcast_snapshot if World.current.tick % 10 == 0
   World.current.step
-}
+end

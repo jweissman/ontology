@@ -3,8 +3,6 @@ require 'ontology'
 require 'json'
 require 'celluloid'
 
-CHANNEL = EM::Channel.new
-
 class Server < Goliath::WebSocket
   include Goliath::Rack::Templates
 
@@ -22,7 +20,7 @@ class Server < Goliath::WebSocket
   end
 
   def on_message(env, msg)
-    env.logger.info "WS MESSAGE: #{msg} [PLAYER_ID #{env['player_id']}]"
+    env.logger.info "WS MESSAGE: #{msg}"
 
     # i keep thinking that it might be better to deref based on some secure header...
     #env['goliath.request-headers'].each_pair do |key, value|
@@ -33,24 +31,21 @@ class Server < Goliath::WebSocket
     command, player_name = body['command'], body['user']
 
     return unless command && player_name
-    env.logger.debug "--- command: #{command}"
-    env.logger.debug "--- player: #{player_name}"
+    env.logger.debug "--- command:  #{command}"
+    env.logger.debug "--- player:   #{player_name}"
 
-    result = { :command => command, :status => 200, :player => player_name, :player_id => env['player_id'] }
+    #result = { :command => command, :status => 200 } #, :player => player_name, :player_id => env['player_id'] }
     if command == 'join'
-      puts "--- handling join..."
+      #puts "--- handling join..."
       World.current.join(player_name)
-      #env['player_id'] = player.id
 
-      puts "--- assembling results..."
-      result[:players] = World.current.players.map do |player|
-        {
-          id:             player.id,
-          name:           player.name,
-          position:       player.position
-        }
-      end
-      result[:map] = World.current.game_map.rows
+      #players = World.current.players
+      #puts "--- current players: #{players.inspect}"
+
+      #env['player_id'] = player.id
+      #puts "--- assembling results..."
+      #result[:players] = players.map(&:to_hash)
+      #result[:map] = World.current.game_map.rows
     #elsif command == 'bye'
     #  World.current.remove_player(name)
     else
@@ -59,18 +54,19 @@ class Server < Goliath::WebSocket
 
       if command == 'chat'
         result[:message] = body['message']
+        channel << { :command => 'chat', :message => body['message'], :player => player.name }.to_json
       elsif command == 'move'
         direction = body['direction']
-        env.logger.debug "--- okay! "
-        moved = World.current.move(player, direction)
-        result[:position] = player.position if moved
+        #env.logger.debug "--- okay! "
+        World.current.move(player, direction)
+        #result[:position] = player.position if moved
       # TODO elsif command == 'use'
 
       end
     end
 
-    env.logger.info "=== returning result: #{result}"
-    channel << result.to_json
+    #env.logger.info "=== returning result: #{result}"
+    #channel << result.to_json
   end
 
   def on_close(env)
