@@ -2,13 +2,41 @@ require 'data_mapper'
 require 'dm-serializer/to_json'
 require 'minotaur'
 
-CHANNEL = EM::Channel.new
+
 
 class Fixnum
   def to_json(options = nil)
     to_s
   end
 end
+
+CHANNEL = EM::Channel.new
+class Message
+  attr_accessor :command, :params
+  def initialize(command, params={})
+    @command = command || 'ping'
+    @params  = params  || {}
+  end
+
+  def to_json
+    {:command => @command}.merge!(@params)
+  end
+
+  class << self
+    def send(*args)
+      CHANNEL << Message.new(*args).to_json
+    end
+
+    def chat(msg='hello world')
+      send 'chat', msg: msg
+    end
+
+    def snap(data={})
+      send 'snapshot', data
+    end
+  end
+end
+
 
 class Player
   include DataMapper::Resource
@@ -21,7 +49,7 @@ class Player
 
   property :status, Enum[ :resting, :moving, :fighting, :tired, :sick, :injured, :dead ], :default => :resting
 
-  property :speed, Integer, :default => 14 # smaller is faster (less frames between move-throttling)
+  property :speed, Integer, :default => 1 # smaller is faster (less frames between move-throttling)
 
   validates_uniqueness_of :name
 
@@ -49,13 +77,14 @@ class GameMap
   property :id,    Serial
   property :name,  String
 
-  property :width,   Integer, :default => 5
-  property :height,  Integer, :default => 5
-  property :rows,    Json,    :default => lambda { |r,p| [[1,1,1,1,1],
-                                                          [1,0,0,0,1],
-                                                          [1,0,0,0,1],
-                                                          [1,0,0,0,1],
-                                                          [1,1,1,1,1]].to_json } # r.labyrinth.to_a.to_json }
+  property :width,   Integer, :default => 25
+  property :height,  Integer, :default => 25
+  property :rows,    Json,    :default => lambda { |r,p| Array.new(r.width) { Array.new(r.height) {0}}.to_json }
+    #[[0,0,0,0,0],
+    #                                                      [0,0,0,0,0],
+    #                                                      [0,0,0,0,0],
+    #                                                      [0,0,0,0,0],
+    #                                                      [0,0,0,0,0]].to_json } # r.labyrinth.to_a.to_json }
 
   attr_accessor :labyrinth
   def labyrinth
@@ -76,7 +105,7 @@ class GameMap
 
   def all_positions
     all = []
-    Minotaur::Geometry::Grid.each_position(self.width,self.height) { |pos| all << pos }
+    Minotaur::Geometry::Grid.each_position(self.width-1,self.height-1) { |pos| all << pos }
     all
   end
 
@@ -118,48 +147,59 @@ class World
     @scheduled_updates ||= []
   end
 
-  def schedule_update(t,opts={},&block)
-    puts "--- scheduling update..."
+  def schedule_update(t=@tick,opts={},&block)
+    puts "--- scheduling update at t=#{t}..."
     @scheduled_updates << [t,opts,block] if block_given?
   end
 
   def join(player_name)
-    puts "--- join!"
+    puts "--- #{player_name} joins the realm!"
     new_position = open_positions.sample
     puts "=== player attempting to be placed at #{new_position}"
     puts "--- #{new_position.inspect}"
     players << Player.create({name:player_name,x:new_position.x,y:new_position.y})
+
   end
 
   COMPASS = {:n => NORTH, :e => EAST, :w => WEST, :s => SOUTH}
   def move(player, direction)
-    return if player.status == :moving
-    puts "=== move #{player} #{direction}!"
+    if player.status == :moving
+      puts "=== PLAYER IS ALREADY MOVING, IGNORING MOVE COMMAND"
+      return
+    end
+
+    puts "--- Player attempting to move!"
+
+
     x, y = player.x, player.y
-    puts "--- to #{x}, #{y}"
     direction = direction.slice(0,1).downcase.to_sym
-    puts "--- direction #{direction}, checking compass"
+
     if COMPASS.has_key?(direction)
+      puts "--- I've got player #{player.name} at position #{x}, #{y} attempting to move in valid direction #{direction}..."
       dir = COMPASS[direction]
       target = Minotaur::Geometry::Position.new(DX[dir]+x, DY[dir]+y)
-      puts "--- target position is #{target}"
       open = open_positions.include?(target)
-      puts "--- is target position open?! #{open} #{game_map.at(target)}"
-      puts game_map.rows.inspect
-      return false unless open #_positions.include?(target)
+      #puts game_map.rows.inspect
+      puts "--- Is that position open? #{open}"
+      return false unless open
+      puts "=== It seems okay! Setting player's status to moving..."
       player.status = :moving
       player.save!
-      puts "=== scheduling update!!!!"
-      schedule_update(player.next_active_tick, {target: target}) do |opts|
+      puts "--- And scheduling move!!!"
+      schedule_update(player.next_active_tick, {target: target, player: player}) do |opts|
+
         target = opts[:target]
-        puts "--- attempting to assign new player position #{target}..."
+        player = opts[:player]
+        puts "=== ACTUALLY PERFORMING MOVE OF PLAYER #{player.name} TO TARGET POSITION #{target}"
+        puts "--- all players before update: #{players.all.map(&:to_hash)}"
+        puts "--- player before update: #{player.inspect}"
         player.x = target.x
         player.y = target.y
         player.status = :resting
         player.save!
-        #CHANNEL << { :command => 'move', :player => player.name, :x => target.x, :y => target.y }.to_json
+        puts "--- all players before update: #{players.all.map(&:to_hash)}"
+        puts "--- player after update: #{player.inspect}"
         broadcast_snapshot
-        puts "--- moved to position #{target}!"
       end
       true
     else
@@ -173,7 +213,6 @@ class World
       puts "--- update! #@tick"
       @tick += 1
       updates_to_remove = []
-
       puts "=== checking for updates ******************************"
       scheduled_updates.each_with_index do |(t,opts,update_block),n|
         puts "--- checking on tasked schedule to be run at t=#{t}"
@@ -188,6 +227,13 @@ class World
     save!
   end
 
+  def chat(msg)
+    # delay messages so they get send during update cycle
+    #schedule_update {
+    CHANNEL << { :command => 'chat', :message => msg }.to_json
+    #}
+  end
+
   def broadcast_snapshot
     #snapshot = World.current.to_hash # to_json(:element_name => 'world')
     #if @players.count > 0
@@ -197,8 +243,10 @@ class World
     #CHANNEL << snapshot #{command: 'snapshot', tick: @tick, players: player_hash, map: map}
      #{ #:command => 'snapshot', :tick => @tick, :players => @players.map(&:to_hash), :map => @game_map.rows }
     #end
-    puts "---- broadcasting snapshot!"
+    puts "---- broadcasting snapshot: #{snapshot.inspect}"
+    #schedule_update({snapshot: snapshot}) { |opts|
     CHANNEL << snapshot.to_json
+    #}
     snapshot
   end
 end
@@ -211,9 +259,12 @@ DataMapper.finalize
 DataMapper::Logger.new($stdout, :debug)
 
 # in-memory sqlite db
-DataMapper.setup(:default, 'sqlite::memory:')
+#DataMapper.setup(:default, 'sqlite::memory:')
+DataMapper.setup :default, "sqlite://#{Dir.pwd}/zephyr.db"
+
 
 DataMapper.auto_migrate!
+sleep 3 # ???
 
 $stdout.sync = true
 

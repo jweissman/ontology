@@ -49,24 +49,15 @@ class Server < Goliath::WebSocket
     #elsif command == 'bye'
     #  World.current.remove_player(name)
     else
-      player = Player.all(name: player_name).first
+      player = World.current.players.select { |p| p.name == player_name }.first
       return unless player
 
       if command == 'chat'
-        result[:message] = body['message']
-        channel << { :command => 'chat', :message => body['message'], :player => player.name }.to_json
+        World.current.chat "#{player.name}: #{body['message']}"
       elsif command == 'move'
-        direction = body['direction']
-        #env.logger.debug "--- okay! "
-        World.current.move(player, direction)
-        #result[:position] = player.position if moved
-      # TODO elsif command == 'use'
-
+        World.current.move(player, body['direction'])
       end
     end
-
-    #env.logger.info "=== returning result: #{result}"
-    #channel << result.to_json
   end
 
   def on_close(env)
