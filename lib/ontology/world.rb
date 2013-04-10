@@ -1,8 +1,10 @@
+require 'net/http'
+
 require 'data_mapper'
 require 'dm-serializer/to_json'
+require 'active_support/inflector'
+
 require 'minotaur'
-
-
 
 class Fixnum
   def to_json(options = nil)
@@ -11,34 +13,80 @@ class Fixnum
 end
 
 CHANNEL = EM::Channel.new
-class Message
-  attr_accessor :command, :params
-  def initialize(command, params={})
-    @command = command || 'ping'
-    @params  = params  || {}
+
+module RemoteActor
+  include DataMapper::Resource
+
+  # keep track of remote id? (they're using our keys...)
+  property :remote_id, Integer, :key => true
+
+  def model_name
+    self.class.name.downcase
   end
 
-  def to_json
-    {:command => @command}.merge!(@params)
+  def collection_stream
+    "/#{model_name.pluralize}.json"
   end
 
-  class << self
-    def send(*args)
-      CHANNEL << Message.new(*args).to_json
-    end
+  def instance_stream
+    "/#{model_name}/#{id}.json"
+  end
 
-    def chat(msg='hello world')
-      send 'chat', msg: msg
-    end
+  def snapshot
+    attributes
+  end
 
-    def snap(data={})
-      send 'snapshot', data
+  #class << self
+    def collection_sync
+      #puts "--- attempting firehose collection sync!"
+      puts "--- i have this for the collection: #{self.class.all.inspect}"
+      #self.class.all.map(&:snapshot).to_json
+      firehose collection_stream, self.class.all.map(&:snapshot).to_json
+    end
+  #end
+
+  def instance_sync #(payload=snapshot)
+    #puts "=== FIREHOSE SYNC WITH PAYLOAD #{payload.inspect}"
+    #firehose collection_stream, [payload
+    #puts "---- attempting firehose sync :)"
+    puts "--- i have this for the current instance: #{snapshot.to_json}"
+    firehose instance_stream, snapshot.to_json
+  end
+
+  # instance + collection sync (maybe default #sync behavior?)
+  def firehose_sync
+    puts "=== FIREHOSE BABY"
+    instance_sync
+    collection_sync
+  end
+
+
+  # TODO i wonder if deletions shouldn't be done out-of-band...
+
+  #def firehose_remove
+  #  deletion_message = {id: id, deleted: 'true'}.to_json
+  #  firehose_sync(deletion_message)
+  #end
+
+  protected
+  def firehose(endpoint, payload=to_json)
+    # firehose...!
+    begin
+      puts "--- publishing update to #{endpoint}: #{payload.inspect}"
+      req = Net::HTTP::Put.new endpoint #("/#{model_name}/#{id}.json")
+      req.body = payload # to_json(:methods => [:players, :game_map]) #, :map])
+      Net::HTTP.start('127.0.0.1', 7474).request(req)
+    rescue => err
+      puts "--- there was a problem talking to firehose :/"
+      puts err
     end
   end
+  #end
 end
 
 
-class Player
+class Player # < RemoteActor
+  include RemoteActor
   include DataMapper::Resource
 
   property :id,   Serial
@@ -47,7 +95,7 @@ class Player
   property :y, Integer
   property :last_moved_tick, Integer, :default => 0
 
-  property :status, Enum[ :resting, :moving, :fighting, :tired, :sick, :injured, :dead ], :default => :resting
+  property :status, Enum[ :resting, :moving  ], :default => :resting
 
   property :speed, Integer, :default => 1 # smaller is faster (less frames between move-throttling)
 
@@ -58,7 +106,7 @@ class Player
   end
 
   def next_active_tick(current_tick=World.current.tick)
-    puts "=== next active tick? (given current tick #{current_tick})"
+    #puts "=== next active tick? (given current tick #{current_tick})"
     [(last_moved_tick+speed), current_tick].max
   end
 
@@ -71,20 +119,22 @@ class Player
   end
 end
 
-class GameMap
+class GameMap #< RemoteActor
+  include RemoteActor
   include DataMapper::Resource
 
   property :id,    Serial
   property :name,  String
 
-  property :width,   Integer, :default => 25
-  property :height,  Integer, :default => 25
-  property :rows,    Json,    :default => lambda { |r,p| Array.new(r.width) { Array.new(r.height) {0}}.to_json }
+  property :width,   Integer, :default => 5
+  property :height,  Integer, :default => 5
+  property :rows,    Json,    :default => lambda { |r,p| # r.labyrinth.to_a.to_json } #
+                                                         Array.new(r.width) { Array.new(r.height) {0}}.to_json }
     #[[0,0,0,0,0],
     #                                                      [0,0,0,0,0],
     #                                                      [0,0,0,0,0],
     #                                                      [0,0,0,0,0],
-    #                                                      [0,0,0,0,0]].to_json } # r.labyrinth.to_a.to_json }
+    #                                                      [0,0,0,0,0]].to_json } #
 
   attr_accessor :labyrinth
   def labyrinth
@@ -114,29 +164,46 @@ class GameMap
   end
 end
 
-class World
+# TODO chat?
+class ChatLog
+  include RemoteActor
   include DataMapper::Resource
-  include Celluloid
+  #include Celluloid
+
+  property :id, Serial
+  property :messages, Json, :default => []
+
+  def message(speaker,payload)
+    messages << [Time.now,speaker,payload]
+  end
+end
+
+class World #< RemoteActor
+  include RemoteActor
+  include DataMapper::Resource
   include Minotaur::Geometry::Directions
+
+
+  # TODO hook into backbone collection/instance (i.e., round-trip from datamapper)
+  # don't seem to be getting called? or maybe i'm missing something
+  #after :create, :firehose_sync
+  #before :save, :firehose_sync
 
   DIRECTIONS = {n: NORTH, e: EAST, s: SOUTH, w: WEST}
 
+  has 1, :chat_log
   has 1, :game_map
   has n, :players
 
-  property :id,  Serial
-  property :name, String
+  property :id,   String, :key => true
+  property :name, String, :default => 'datamapper default name'
 
   property :tick, Integer, :default => 0
 
-  task_class TaskThread
-
-  def self.current
-    @@current ||= construct
-  end
-
-  def self.construct
-     World.create({name: 'Hello', game_map: GameMap.create(name: 'Worlddds!')})
+  def self.construct(name="New World")
+    world = World.create({id: SecureRandom.uuid, name: name, game_map: GameMap.create(name: 'manually assigned name on server!')})
+    #WorldSimulator.new(world).simulate
+    world
   end
 
   def open_positions
@@ -152,13 +219,26 @@ class World
     @scheduled_updates << [t,opts,block] if block_given?
   end
 
-  def join(player_name)
-    puts "--- #{player_name} joins the realm!"
+  def join(player)
+    puts "--- #{player.name} joins the realm!*******************"
     new_position = open_positions.sample
     puts "=== player attempting to be placed at #{new_position}"
     puts "--- #{new_position.inspect}"
-    players << Player.create({name:player_name,x:new_position.x,y:new_position.y})
+    player.update({x:new_position.x,y:new_position.y})
+    players << player
+    player.save!
+    save!
+    puts "--- everything saved...!"
+  end
 
+  def leave(player)
+    player.world = nil
+    player.save
+    puts "--- player should no longer be in world...!"
+  end
+
+  def active_player_ids
+    players.map(:id)
   end
 
   COMPASS = {:n => NORTH, :e => EAST, :w => WEST, :s => SOUTH}
@@ -184,7 +264,7 @@ class World
       return false unless open
       puts "=== It seems okay! Setting player's status to moving..."
       player.status = :moving
-      player.save!
+      player.save
       puts "--- And scheduling move!!!"
       schedule_update(player.next_active_tick, {target: target, player: player}) do |opts|
 
@@ -196,10 +276,10 @@ class World
         player.x = target.x
         player.y = target.y
         player.status = :resting
-        player.save!
+        player.save
         puts "--- all players before update: #{players.all.map(&:to_hash)}"
         puts "--- player after update: #{player.inspect}"
-        broadcast_snapshot
+        #broadcast_snapshot
       end
       true
     else
@@ -209,14 +289,12 @@ class World
 
   # tick! is expecting to be called every 65ms or so
   def step
-    if @tick
-      puts "--- update! #@tick"
-      @tick += 1
+    #puts "--- world #@name (#@id) step!!!!!"
+    if self.tick
+      self.tick += 1
       updates_to_remove = []
-      puts "=== checking for updates ******************************"
       scheduled_updates.each_with_index do |(t,opts,update_block),n|
-        puts "--- checking on tasked schedule to be run at t=#{t}"
-        if t <= @tick
+        if t <= self.tick
           puts "--- running scheduled update!"
           update_block.call(opts)
           updates_to_remove << n
@@ -224,60 +302,63 @@ class World
       end
       updates_to_remove.each { |n| @scheduled_updates.delete_at(n) }
     end
-    save!
   end
 
-  def chat(msg)
-    # delay messages so they get send during update cycle
-    #schedule_update {
-    CHANNEL << { :command => 'chat', :message => msg }.to_json
-    #}
+  def chat(*args)
+    puts "=== CHAT NOT IMPLEMENTED YET GO AWWAY"
   end
 
-  def broadcast_snapshot
-    #snapshot = World.current.to_hash # to_json(:element_name => 'world')
-    #if @players.count > 0
-    snapshot = {command: 'snapshot', tick: @tick}
-    snapshot[:players] = players.map(&:to_hash) if players
-    snapshot[:map] = game_map.rows
-    #CHANNEL << snapshot #{command: 'snapshot', tick: @tick, players: player_hash, map: map}
-     #{ #:command => 'snapshot', :tick => @tick, :players => @players.map(&:to_hash), :map => @game_map.rows }
-    #end
-    puts "---- broadcasting snapshot: #{snapshot.inspect}"
-    #schedule_update({snapshot: snapshot}) { |opts|
-    CHANNEL << snapshot.to_json
-    #}
-    snapshot
+  def snapshot
+    # TODO handle map by reference too...?
+    attributes.merge(players: players.map(&:id), map: game_map.rows)
   end
 end
 
 
+class WorldSimulator
+  include Celluloid
+  task_class TaskThread
+
+  def simulate
+    World.all.each do |world|
+      every(0.66) do
+        world.step
+
+        # update client snapshots every 5 ticks
+        if world.tick % 5 == 0
+          world.save
+          world.firehose_sync
+        end
+      end
+    end
+  end
+end
+
 
 ## setup dm #####
 DataMapper.finalize
-
 DataMapper::Logger.new($stdout, :debug)
-
-# in-memory sqlite db
-#DataMapper.setup(:default, 'sqlite::memory:')
-DataMapper.setup :default, "sqlite://#{Dir.pwd}/zephyr.db"
-
-
+DataMapper.setup :default, "sqlite://#{Dir.pwd}/world.db"
 DataMapper.auto_migrate!
-sleep 3 # ???
 
 $stdout.sync = true
 
 ## kick off simulation ####
 
-## TODO this is a whole world of problems :/ figure out a better way to supervise this
+## TODO this is a whole world of problems :/ figure out a better way to supervise this...
+##      probably magnified by the multiple worlds (i.e., if one crashes...)
+##      though the multiple worlds points to a possible solution -- a supervisor that monitors them all,
+##      attempts to reboot them -- i.e., like an adult might actually use celluloid
 
 puts "=== kicking off simulation!"
 
-#world = World.current
-
-# not great, crashes the api if the simulation goes down... :(
-World.current.every(0.066) do
-  World.current.broadcast_snapshot if World.current.tick % 10 == 0
-  World.current.step
+if World.count == 0
+  puts "--- building a few worlds to start us off..."
+  3.times do |n|
+    World.construct("World #{n}").save
+  end
 end
+
+puts "--- world count: #{World.count}"
+puts "--- starting simulator!"
+WorldSimulator.new.simulate

@@ -3,17 +3,17 @@ require 'ontology'
 require 'json'
 require 'celluloid'
 
+#class Command
+#end
+
 class Server < Goliath::WebSocket
   include Goliath::Rack::Templates
 
+  # hmmm
   def channel; CHANNEL end
-
-  #attr_accessor :world_running
 
   def on_open(env)
     env.logger.info "WS OPEN"
-
-    #env['player_id'] = SecureRandom.uuid
     env['subscription'] = channel.subscribe do |m|
       env.stream_send(m)
     end
@@ -21,41 +21,75 @@ class Server < Goliath::WebSocket
 
   def on_message(env, msg)
     env.logger.info "WS MESSAGE: #{msg}"
-
-    # i keep thinking that it might be better to deref based on some secure header...
-    #env['goliath.request-headers'].each_pair do |key, value|
-    #  puts ">>> #{key} => #{value}"
-    #end
-
     body = JSON[msg]
-    command, player_name = body['command'], body['user']
+    command = body['command']
+    player_id    = body['player_id']
+    player_name  = body['player_name']
+    return unless command && player_id && player_name
 
-    return unless command && player_name
     env.logger.debug "--- command:  #{command}"
-    env.logger.debug "--- player:   #{player_name}"
+    env.logger.debug "--- player:   #{player_name} (#{player_id})"
+    if command == 'ping'
 
-    #result = { :command => command, :status => 200 } #, :player => player_name, :player_id => env['player_id'] }
-    if command == 'join'
-      #puts "--- handling join..."
-      World.current.join(player_name)
+      puts "=== PING (add player) from #{player_name} (#{player_id})"
+      # TODO seems to be broken??
+      player = Player.get(player_id) #{id: player_id, name: player_name})
+      if player
+        puts "--- player already exists! hello #{player.name}!"
+      else
+        puts "--- creating player"
+        player = Player.create({id:player_id,name:player_name})
+        player.save!
+        puts "--- created player!"
+        puts "--- here's the list of all players if you're curious: "
+        puts Player.all.inspect
 
-      #players = World.current.players
-      #puts "--- current players: #{players.inspect}"
-
-      #env['player_id'] = player.id
-      #puts "--- assembling results..."
-      #result[:players] = players.map(&:to_hash)
-      #result[:map] = World.current.game_map.rows
-    #elsif command == 'bye'
-    #  World.current.remove_player(name)
+      end
     else
-      player = World.current.players.select { |p| p.name == player_name }.first
-      return unless player
+      puts "--- looking up player entity based on id #{player_id}..."
+      player = Player.get(player_id)
+      if player
+        puts "--- player #{player.name} found!"
 
-      if command == 'chat'
-        World.current.chat "#{player.name}: #{body['message']}"
-      elsif command == 'move'
-        World.current.move(player, body['direction'])
+        # TODO create worlds..
+        #if command == 'create'
+        #  # create a new world!
+        #  puts "--- got a create world '#{world_name}' command!"
+        #  world_name = body['world_name']
+        #  world = World.create({name: world_name})
+        #  if world.valid?
+        #    puts "--- world is valid, saving!"
+        #    world.save
+        #    puts "--- spinning up new world #{world_name}!"
+        #    spin_up world
+        #    puts "=== okay, new world #{world_name} has hopefully been spun up..."
+        #  else
+        #    puts "--- world #{world_name} was not valid"
+        #  end
+        if command == "join"
+          puts "--- handling join...********************************"
+
+          world_id = body['world_id']
+          world = World.get(world_id)
+
+          puts "--- player #{player.name} joining world #{world.name}"
+          world.join(player)
+        else
+          # so at this point we know the player and the world
+          world = player.world
+          puts "--- player #{name} is in world #{world.name}"
+          if command == 'chat'
+            world.chat(player,body['message'])
+          elsif command == 'move'
+            world.move(player,body['direction'])
+          elsif command == 'leave'
+            world.leave(player)
+          else
+            puts "--- got unknown command #{command}"
+          end
+        end
+      else
+        puts "====== no player with id #{player_id} found :("
       end
     end
   end
