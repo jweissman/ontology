@@ -97,13 +97,15 @@ class World
   def leave(player)
     puts "--- #{player.name} leaves the realm #{name}**********"
     player.world = nil
-    player.save
+    player.save!
     puts "--- player should no longer be in world...!"
+
+    # okay, sync world
     sync
 
     # both global players and particular world players could be updtaed
     player.collection_sync
-    players.first.collection_sync
+    Player.first.collection_sync
   end
 
   #def active_player_ids

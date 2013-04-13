@@ -13,7 +13,7 @@ require 'celluloid'
 class WorldSimulator < Struct.new(:world_id)
   include Celluloid
   task_class TaskThread
-  DEFAULT_TICK_RATE = 0.066
+  DEFAULT_TICK_RATE = 0.66
 
   def simulate tick_rate=DEFAULT_TICK_RATE
     #World.all.each do |world|
@@ -122,25 +122,25 @@ class Server < Goliath::WebSocket
 
     env.logger.debug "--- command:  #{command}"
     env.logger.debug "--- player:   #{player_name} (#{player_id})"
+
     if command == 'ping'
       puts "=== PING (add player) from #{player_name} (#{player_id})"
-      # TODO seems to be broken??
+      #env['player'] = player
       player = Player.get(player_id) #{id: player_id, name: player_name})
       if player
-        puts "--- player already exists! hello #{player.name}!"
+        puts "--- player already exists, hello #{player.name}!"
       else
-        puts "--- creating player"
         player = Player.new({id:player_id,name:player_name})
         player.save!
-        puts "--- created player!"
-        puts "--- here's the list of all players if you're curious: "
-        puts Player.all.inspect
+        puts "--- created player #{player.inspect}"
       end
+
     else
+      # yeah, see we could just be using env['player'] i think
+      # (i.e., and not need to pass player_id in)
       puts "--- looking up player entity based on id #{player_id}..."
       player = Player.get(player_id)
       if player
-        puts "=== got player: #{player.inspect}"
         puts "--- player #{player.name} found!"
 
         # TODO create worlds..
@@ -148,16 +148,15 @@ class Server < Goliath::WebSocket
           # create a new world!
           world_name = body['world_name']
           return unless world_name
-          puts "--- got a create world '#{world_name}' command!"
-          #world_name = body['world_name']
-          world = World.create({name: world_name}) #, game_map: GameMap.new})
+          puts "=== attempting to create world #{world_name}!"
+          world = World.create({name: world_name})
           if world.valid?
             puts "--- world is valid, saving!"
             world.save
             puts "--- spinning up new world #{world_name}!"
             #spin_up world
             WorldSimulator.new(world.id).simulate
-            puts "=== okay, new world #{world_name} has hopefully been spun up..."
+            puts "=== okay, new world #{world_name} has hopefully been spun up...!"
           else
             puts "--- world #{world_name} was not valid"
             puts world.errors
@@ -165,37 +164,28 @@ class Server < Goliath::WebSocket
         elsif command == "join"
           puts "----- handling join for player.."
           puts "--- #{player.inspect}"
-          if player
-            world_id = body['world_id']
-            world = World.get(world_id)
-            if world
-              puts "--- world is valid! player #{player.name} joining world #{world.name} (world id=#{world.id})"
-              new_position = world.open_positions.sample
-              player.x = new_position.x
-              player.y = new_position.y
-              player.world = world
-              puts "--- player details: #{player.inspect}"
-              player.save!
-              world.players << player
-              world.save
+          #if player
+          world_id = body['world_id']
+          world = World.get(world_id)
+          if world
+            new_position = world.open_positions.sample
+            player.x = new_position.x
+            player.y = new_position.y
+            player.world = world
+            player.save!
 
-              puts "--- player world: #{player.world.snapshot}"
-              puts "=== updated player position and world!!!"
-              puts "--- world players: #{world.players.inspect}"
-              puts "--- world snapshot: #{world.snapshot}"
-              puts "--- player: #{player.inspect}"
-              env['world'] = world
-              puts "=== player #{player.name} added to world!"
-              puts "--- world: #{world.snapshot}"
-            else
-              puts "--- world is not valid... :("
-            end
+            # IDK OK
+            world.players << player
+            world.save
+
+            env['world'] = world
+            puts "=== joined!"
           else
-            puts "--- somehow player disappeared...?"
+            puts "--- would join but world is not valid...? :("
           end
         else
           # so at this point we know the player and the world
-          puts "=== we should know the player and the world at this point"
+          #puts "=== we should know the player and the world at this point"
           world = player.world
           puts "--- player #{player.name} is in world #{world.name}"
           if command == 'chat'
@@ -203,7 +193,9 @@ class Server < Goliath::WebSocket
           elsif command == 'move'
             world.move(player,body['direction'])
           elsif command == 'leave'
-            world.leave(player)
+            puts "===== LEAVE"
+            # kind of strange; this makes way more sense semiotically as 'player.leave world'
+            world.leave player
           else
             puts "--- got unknown command #{command}"
           end

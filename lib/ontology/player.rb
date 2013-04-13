@@ -20,6 +20,8 @@ class Player # < RemoteActor
 
   # nested collection stream for players in worlds -- still has a normal instance stream...
   # maybe that's weird? :)
+  # the idea is to capture the fact that the domain permits players to 'float'; not be in a world
+  # and also it would seem convenient for clients to be able to connect to the API endpoint
   def collection_stream
     world ? "/world/#{world.id}/players.json" : super
   end
