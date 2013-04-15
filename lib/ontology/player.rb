@@ -6,10 +6,16 @@ class Player # < RemoteActor
   property :name, String, :default => 'Guest'
   property :x,    Integer
   property :y,    Integer
-  property :last_moved_tick, Integer, :default => 0
-  property :status, Enum[ :resting, :moving  ], :default => :resting
 
-  property :speed, Integer, :default => 3
+  property :last_moved_tick, Integer, :default => 0
+  property :status, Enum[ :resting, :moving,:attacking, :cooldown ], :default => :resting
+
+
+  property :attack,  Integer, default: 2
+  property :defense, Integer, default: 1
+  property :hp,      Integer, default: 3
+
+  property :speed, Integer, default: 3 # smaller is faster :)
 
   belongs_to :world, required: false
 
@@ -34,6 +40,8 @@ class Player # < RemoteActor
     Minotaur::Geometry::Position.new(self.x,self.y)
   end
 
+  # TODO move leaving/joining world bizlogic here... (makes more sense semanticaly at the very least)
+
   #def update_position(pos)
   #  self.x = pos.x
   #  self.y = pos.y
@@ -52,7 +60,18 @@ class Player # < RemoteActor
   #  #save!
   #end
 
-  def next_active_tick(current_tick=World.current.tick)
+  def next_active_tick(current_tick=self.world.tick)
+    puts "--- calculating player's next active tick!"
     [(last_moved_tick+speed), current_tick].max
   end
+
+
+  #COOLDOWN_RATE = 25
+  #def step
+  #  puts "=== updating player #{self.name}"
+  #  if self.status == :cooldown && last_moved_tick+COOLDOWN_RATE <= self.world.tick
+  #    self.status = :resting
+  #    save
+  #  end
+  #end
 end

@@ -9,32 +9,43 @@ require 'celluloid'
 #### figure out how to break this apart...
 
 
+$world_registry = {}
 # todo needs to be started with a supervisor so we can shut it down :)
-class WorldSimulator < Struct.new(:world_id)
+class WorldSimulator# < Struct.new(:world_id)
   include Celluloid
   task_class TaskThread
-  DEFAULT_TICK_RATE = 0.66
+  DEFAULT_TICK_RATE = 0.066
 
-  def simulate tick_rate=DEFAULT_TICK_RATE
+
+  attr_accessor :world
+
+  def simulate world, tick_rate=DEFAULT_TICK_RATE
+    $world_registry[world.name] = world
+    @world = world
     #World.all.each do |world|
 
+    #world = World.get(world_id)
     every tick_rate do
 
-      world = World.get(world_id)
-      world.step
-
-      puts "=== world #{world.name} tick #{world.tick}!"
-
+      self.world.step
+      puts "=== world #{world.name} tick #{world.tick} [updates: #{world.updates.count}]"
       # update client snapshots every 5 ticks
-      if world.tick % 5 == 0
-        puts "=== CALLING WORLD SYNC"
-        puts "--- world: #{world.inspect}"
+      #if self.world.tick % 10 == 0
+        #puts "=== CALLING WORLD SYNC"
+        #puts "--- world: #{world.inspect}"
         #world.save
-        #world.collection_sync
-        world.sync
-        world.game_map.sync
-        world.players.map(&:sync)
-      end
+        #world. collection_sync
+        #world.schedule_update(world.tick+25) do
+        #  puts "an update!"
+        #end
+        #world.reload
+        self.world.save
+        self.world.sync
+        self.world.game_map.sync
+        self.world.players.map(&:sync)
+        self.world.enemies.map(&:sync)
+
+      #end
     end
     #end
   end
@@ -44,13 +55,27 @@ end
 class WorldSnapshotGenerator
   include Celluloid
   task_class TaskThread
-  DEFAULT_TICK_RATE = 1
+  DEFAULT_TICK_RATE = 0.22
 
   def process tick_rate=DEFAULT_TICK_RATE
-    puts "--- about to kickoff snapshot maker..."
+    #puts "--- about to kickoff snapshot maker..."
     every tick_rate do
-      World.first.collection_sync #snapshot
+      #puts "==== SNAPSHOT"
+      $world_registry.values.first.collection_sync #snapshot
       Player.first.collection_sync if Player.first
+
+      Player.all(:fields => [:world_id], :unique => true).each do |p|
+        #puts "--- collection syncing players for world #{p.world.name}"
+        p.collection_sync
+      end
+      Enemy.all(:fields => [:world_id], :unique => true).each do |e|
+        #puts "--- collection syncing enemies for world #{e.world.name}"
+        e.collection_sync
+      end
+      Event.all(:fields => [:world_id], :unique => true).each do |evt|
+        #puts "--- collection syncing events for world #{evt.world.name}"
+        evt.collection_sync
+      end
     end
   end
 end
@@ -78,9 +103,9 @@ puts "=== kicking off simulation!"
 
 if World.count == 0
   puts "--- building a few worlds to start us off..."
-  3.times do |n|
+  1.times do |n|
     world = World.create(name: "Sandbox #{n}").save!
-    puts "--- created world: #{world.inspect}"
+    #puts "--- created world: #{world.inspect}"
   end
   puts "--- done building worlds...."
 end
@@ -89,9 +114,10 @@ puts "--- world count: #{World.count}"
 puts "--- starting simulator!"
 World.all.each do |world|
   puts "--- simulating world #{world.name}"
-  WorldSimulator.new(world.id).simulate
+  WorldSimulator.new.simulate(world)
 end
 #
+puts "--- creating new snapshot generator!"
 WorldSnapshotGenerator.new.process
 
 
@@ -134,6 +160,7 @@ class Server < Goliath::WebSocket
         player.save!
         puts "--- created player #{player.inspect}"
       end
+      env['player'] = player
 
     else
       # yeah, see we could just be using env['player'] i think
@@ -155,7 +182,7 @@ class Server < Goliath::WebSocket
             world.save
             puts "--- spinning up new world #{world_name}!"
             #spin_up world
-            WorldSimulator.new(world.id).simulate
+            WorldSimulator.new.simulate(world)
             puts "=== okay, new world #{world_name} has hopefully been spun up...!"
           else
             puts "--- world #{world_name} was not valid"
@@ -165,8 +192,11 @@ class Server < Goliath::WebSocket
           puts "----- handling join for player.."
           puts "--- #{player.inspect}"
           #if player
+
+          # hmmmm.... :/
           world_id = body['world_id']
           world = World.get(world_id)
+          #world = Celluloid::Actor[world_name.underscore.to_sym].world
           if world
             new_position = world.open_positions.sample
             player.x = new_position.x
@@ -179,14 +209,20 @@ class Server < Goliath::WebSocket
             world.save
 
             env['world'] = world
-            puts "=== joined!"
+            puts "=== joined #{world.name}!"
           else
             puts "--- would join but world is not valid...? :("
           end
         else
           # so at this point we know the player and the world
           #puts "=== we should know the player and the world at this point"
-          world = player.world
+          world = $world_registry[env['world'].name] # env['world'] #World.get(player.world.id)
+          #puts "--- got world:"
+          #puts "=== env world: #{env['world']}"
+          ##world_id = body['world_id']
+          #world_name = World.get(world_id).name
+
+          #world = Celluloid::Actor[player.world.name.underscore.to_sym].world
           puts "--- player #{player.name} is in world #{world.name}"
           if command == 'chat'
             world.chat(player,body['message'])
@@ -211,7 +247,7 @@ class Server < Goliath::WebSocket
     channel.unsubscribe(env['subscription'])
 
     # TODO remove players from world! (maybe addressed)?
-    env['world'].leave(player)
+    env['world'].leave(env['player'])
   end
 
   def on_error(env, error)

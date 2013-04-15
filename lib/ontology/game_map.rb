@@ -8,11 +8,12 @@ class GameMap #< RemoteActor
   property :id,      String, key: true, :default => lambda { |_,_| SecureRandom.uuid }
   property :name,    String, default: 'just a map'
 
-  property :width,   Integer, default: 5
-  property :height,  Integer, default: 5
-  property :rows,    Json,    default: lambda { |r,_| # r.labyrinth.to_a.to_json } #
-    Array.new(r.width) { Array.new(r.height) {0}}
-  }
+  property :width,   Integer, default: 30
+  property :height,  Integer, default: 30
+  property :rows,    Json,    default: lambda { |r,_|  r.labyrinth.to_a.to_json } #
+    #r.labyrinth
+  #  Array.new(r.width) { Array.new(r.height) {0}}
+  #}
   #[[0,0,0,0,0],
   #                                                      [0,0,0,0,0],
   #                                                      [0,0,0,0,0],
@@ -21,13 +22,16 @@ class GameMap #< RemoteActor
 
   belongs_to :world #, required: false
 
-  #attr_accessor :labyrinth
-  #def labyrinth
-  #  @labyrinth ||= Minotaur::Labyrinth.new({
-  #                                             width: @width/2,
-  #                                             height: @height
-  #                                         })
-  #end
+  attr_accessor :labyrinth
+  def labyrinth
+    @labyrinth ||= Minotaur::Labyrinth.new({
+       width: (@width/3).to_i,
+       height: (@height/3).to_i,
+       extruder: Minotaur::Extruders::AssemblingRoomExtruder
+    })
+    #puts "--- created labyrinth: "
+    #puts @labyrinth.to_a.to_json
+  end
 
   # all stuff from minotaur's grid ... need to make that a module or helpers  (rethink this whole thing really :)
   def at(position)
