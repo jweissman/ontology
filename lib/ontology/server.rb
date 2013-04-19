@@ -14,36 +14,83 @@ $world_registry = {}
 class WorldSimulator# < Struct.new(:world_id)
   include Celluloid
   task_class TaskThread
-  DEFAULT_TICK_RATE = 0.066
-
+  include FirehosePublisher
+  DEFAULT_TICK_RATE = 0.064
 
   attr_accessor :world
 
   def simulate world, tick_rate=DEFAULT_TICK_RATE
     $world_registry[world.name] = world
-    @world = world
+    self.world = world
     #World.all.each do |world|
+
+    self.world.game_map.firehose
+
+    #self.world.firehose
+    firehose world.reload.snapshot.to_json, world.instance_stream
+
+    # collection manually...?
+    firehose(World.all.map(&:snapshot).to_json, "/worlds.json")
+
 
     #world = World.get(world_id)
     every tick_rate do
-
       self.world.step
-      puts "=== world #{world.name} tick #{world.tick} [updates: #{world.updates.count}]"
-      # update client snapshots every 5 ticks
-      #if self.world.tick % 10 == 0
-        #puts "=== CALLING WORLD SYNC"
-        #puts "--- world: #{world.inspect}"
-        #world.save
-        #world. collection_sync
-        #world.schedule_update(world.tick+25) do
-        #  puts "an update!"
+      #puts "=== world #{world.name} tick #{world.tick} [updates: #{world.updates.count}]"
+      # rehydrate client snapshots every 100 ticks
+      # will need to send more regular deltas
+      #if self.world.tick % 100 == 0
+      #  #puts "=== CALLING WORLD SYNC"
+      #  #puts "--- world: #{world.inspect}"
+      #  #world.save
+      #  #world. collection_sync
+      #  #world.schedule_update(world.tick+25) do
+      #  #  puts "an update!"
+      #  #end
+      #  #world.reload
+      #  world.save!
+      #  puts "==== world saved! syncing..."
+      #  world.broadcast
+        #self.world.firehose
+        #firehose world.reload.snapshot.to_json, world.instance_stream
+        #
+        ## collection manually...?
+        #firehose(World.all.map(&:snapshot).to_json, "/worlds.json")
+        #
+        ##firehose world.snapshot, ""
+        #
+        ##self.world.collection_sync
+        ##world.players.collection_sync
+        #if self.world.players.count > 0
+        #  puts "=== syncing #{self.world.players.count} world players!"
+        #  puts "--- i currently have these players: #{self.world.players.inspect}"
+        #  self.world.players.each do |p|
+        #    puts "--- firehosing #{p.name}..."
+        #    p.firehose
+        #  end
+        #  firehose(self.world.players.collect(&:snapshot).to_json, "/world/#{world.id}/players.json")
+        #  #puts "--- attempting to collection sync via first player: "
+        #  #player = self.world.players.first
+        #  #puts "--- got player: #{player}"
+        #  #player.collection_sync if player
         #end
-        #world.reload
-        self.world.save
-        self.world.sync
-        self.world.game_map.sync
-        self.world.players.map(&:sync)
-        self.world.enemies.map(&:sync)
+        #[ self.world.players ].each do |res|
+        #  puts "--- got players: #{res.all.map(&:snapshot)}"
+        #  res.all.map(&:sync)
+        #  res.first.collection_sync if res.count > 0 #res.first
+        #  #res.first.collection_sync if res.first
+        #end
+
+        #self.world.game_map.sync
+        #Player.first.collection_sync
+        #self.world.players.map(&:sync)
+        #self.world.players.first.collection_sync
+        ##self.world.enemies.map(&:sync)
+        #self.world.enemies.map(&:sync)
+        #self.world.enemies.first.collection_sync
+        #
+        #self.world.events.map(&:sync)
+        #self.world.events.first.collection_sync
 
       #end
     end
@@ -51,34 +98,34 @@ class WorldSimulator# < Struct.new(:world_id)
   end
 end
 
-
-class WorldSnapshotGenerator
-  include Celluloid
-  task_class TaskThread
-  DEFAULT_TICK_RATE = 0.22
-
-  def process tick_rate=DEFAULT_TICK_RATE
-    #puts "--- about to kickoff snapshot maker..."
-    every tick_rate do
-      #puts "==== SNAPSHOT"
-      $world_registry.values.first.collection_sync #snapshot
-      Player.first.collection_sync if Player.first
-
-      Player.all(:fields => [:world_id], :unique => true).each do |p|
-        #puts "--- collection syncing players for world #{p.world.name}"
-        p.collection_sync
-      end
-      Enemy.all(:fields => [:world_id], :unique => true).each do |e|
-        #puts "--- collection syncing enemies for world #{e.world.name}"
-        e.collection_sync
-      end
-      Event.all(:fields => [:world_id], :unique => true).each do |evt|
-        #puts "--- collection syncing events for world #{evt.world.name}"
-        evt.collection_sync
-      end
-    end
-  end
-end
+#
+#class WorldSnapshotGenerator
+#  include Celluloid
+#  task_class TaskThread
+#  DEFAULT_TICK_RATE = 1.38
+#
+#  def process tick_rate=DEFAULT_TICK_RATE
+#    #puts "--- about to kickoff snapshot maker..."
+#    every tick_rate do
+#      #puts "==== SNAPSHOT"
+#      $world_registry.values.first.collection_sync #snapshot
+#      Player.first.collection_sync if Player.first
+#
+#      Player.all(:fields => [:world_id], :unique => true).each do |p|
+#        #puts "--- collection syncing players for world #{p.world.name}"
+#        p.collection_sync
+#      end
+#      Enemy.all(:fields => [:world_id], :unique => true).each do |e|
+#        #puts "--- collection syncing enemies for world #{e.world.name}"
+#        e.collection_sync
+#      end
+#      Event.all(:fields => [:world_id], :unique => true).each do |evt|
+#        #puts "--- collection syncing events for world #{evt.world.name}"
+#        evt.collection_sync
+#      end
+#    end
+#  end
+#end
 
 # could move to 'runner'...?
 
@@ -101,6 +148,12 @@ $stdout.sync = true
 
 puts "=== kicking off simulation!"
 
+# mock player -- just to have a collection to broadcast...
+nobody = Player.new({name: "Nobody"})
+#nobody.firehose
+nobody.firehose [].to_json, "/players.json"
+#include FirehosePublisher
+
 if World.count == 0
   puts "--- building a few worlds to start us off..."
   1.times do |n|
@@ -117,8 +170,8 @@ World.all.each do |world|
   WorldSimulator.new.simulate(world)
 end
 #
-puts "--- creating new snapshot generator!"
-WorldSnapshotGenerator.new.process
+#puts "--- creating new snapshot generator!"
+#WorldSnapshotGenerator.new.process
 
 
 
@@ -158,10 +211,18 @@ class Server < Goliath::WebSocket
       else
         player = Player.new({id:player_id,name:player_name})
         player.save!
-        puts "--- created player #{player.inspect}"
+        #player.collection_sync
+
+        player.firehose Player.all.map(&:snapshot).to_json, player.collection_stream
+        player.firehose
+
+        puts "--- created player #{player.inspect}!"
+        #world.broadcast
+
+
       end
       env['player'] = player
-
+      World.all.each { |w| w.broadcast }
     else
       # yeah, see we could just be using env['player'] i think
       # (i.e., and not need to pass player_id in)
@@ -183,6 +244,7 @@ class Server < Goliath::WebSocket
             puts "--- spinning up new world #{world_name}!"
             #spin_up world
             WorldSimulator.new.simulate(world)
+            world.broadcast
             puts "=== okay, new world #{world_name} has hopefully been spun up...!"
           else
             puts "--- world #{world_name} was not valid"
@@ -195,21 +257,41 @@ class Server < Goliath::WebSocket
 
           # hmmmm.... :/
           world_id = body['world_id']
-          world = World.get(world_id)
+          puts "=== attempting to find world #{world_id}"
+          world = World.get(world_id) # $world_registry[world_name] #
+
           #world = Celluloid::Actor[world_name.underscore.to_sym].world
           if world
+            puts "--- player #{player} entering world #{world_name}"
             new_position = world.open_positions.sample
-            player.x = new_position.x
-            player.y = new_position.y
-            player.world = world
-            player.save!
+            #world.schedule_update(world.tick, {world: world, player: player, position: new_position}) do |opts|
+            #  player   = opts[:player]
+            #  position = opts[:position]
+            #  world    = opts[:world]
 
-            # IDK OK
-            world.players << player
-            world.save
 
-            env['world'] = world
-            puts "=== joined #{world.name}!"
+
+              # IDK OK
+              world.players << player
+              world.players.save!
+              world.save!
+              #world.sync
+
+              player.x = new_position.x
+              player.y = new_position.y
+
+              player.world = world
+              player.save!
+
+              puts "--- world players: #{world.players.inspect}"
+              world.broadcast
+              #world.collection_sync
+              env['world'] = world # TODO note that if join fails we'll still have this reference around :/
+
+              puts "=== joined #{world.name}!"
+            #end
+
+
           else
             puts "--- would join but world is not valid...? :("
           end
@@ -227,11 +309,17 @@ class Server < Goliath::WebSocket
           if command == 'chat'
             world.chat(player,body['message'])
           elsif command == 'move'
-            world.move(player,body['direction'])
+            #puts "=== scheduling move attempt...!"
+            #world.schedule_update(world.tick, {player:player, dir:body['direction'], world: world}) do |opts|
+            #  world = opts[:world]
+            #  direction = opts[:dir]
+            #  player = opts[:player]
+              world.move(player,body['direction'], body['command_id']) #body['direction'])
+            #end
           elsif command == 'leave'
             puts "===== LEAVE"
             # kind of strange; this makes way more sense semiotically as 'player.leave world'
-            world.leave player
+            world.leave(player) if world && player
           else
             puts "--- got unknown command #{command}"
           end

@@ -6,7 +6,7 @@ class Event
   property :id, String, key: true, :default => lambda { |_,_| SecureRandom.uuid }
 
   property :name, String, :default => 'Hello!'
-  property :kind, Enum[ :damage, :attack_failed ] # :heal, :level_up, :points ]
+  property :kind, Enum[ :damage, :attack_failed, :death, :movement ] # :heal, :level_up, :points ]
   property :description, String
 
   property :details, Json, :default => {something: 'happened'}.to_json

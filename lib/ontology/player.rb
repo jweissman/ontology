@@ -13,9 +13,9 @@ class Player # < RemoteActor
 
   property :attack,  Integer, default: 2
   property :defense, Integer, default: 1
-  property :hp,      Integer, default: 3
+  property :hp,      Integer, default: 15
 
-  property :speed, Integer, default: 3 # smaller is faster :)
+  property :speed, Integer, default: 0 # smaller is faster :)
 
   belongs_to :world, required: false
 

@@ -1,3 +1,7 @@
+
+require 'firehose'
+require 'json'
+
 # TODO think about this; we're really, really coupled to DM
 module FirehosePublisher
   def model_name
@@ -19,30 +23,28 @@ module FirehosePublisher
     attributes
   end
 
-  def collection_snapshot
-    self.class.all.map(&:snapshot).to_json
+  #def sync
+  #  puts "--- firehose sync has this for the current #{model_name} instance: #{snapshot.to_json}"
+  #  firehose
+  #end
+
+  def firehose(payload=snapshot.to_json, endpoint=instance_stream)
+    puts "--- publishing update to #{endpoint}: #{payload.inspect}"
+    firehose_producer.publish(payload).to endpoint
+
+    #begin
+    #  req = Net::HTTP::Put.new endpoint
+    #  req.body = payload
+    #  Net::HTTP.start('127.0.0.1', 7474).request(req)
+    #rescue => err
+    #  puts "--- there was a problem talking to firehose :/"
+    #  puts err
+    #end
   end
 
-  def collection_sync
-    #puts "--- firehose sync has this for the #{model_name} collection: #{self.class.all.inspect}"
-    firehose collection_stream, collection_snapshot
+  def firehose_producer(firehose_instance="//127.0.0.1:7474")
+    @firehose_producer ||= Firehose::Producer.new(firehose_instance)
   end
 
-  def sync
-    #puts "--- firehose sync has this for the current #{model_name} instance: #{snapshot.to_json}"
-    firehose
-  end
 
-  protected
-  def firehose(endpoint=instance_stream, payload=snapshot.to_json)
-    begin
-      #puts "--- publishing update to #{endpoint}: #{payload.inspect}"
-      req = Net::HTTP::Put.new endpoint
-      req.body = payload
-      Net::HTTP.start('127.0.0.1', 7474).request(req)
-    rescue => err
-      #puts "--- there was a problem talking to firehose :/"
-      #puts err
-    end
-  end
 end

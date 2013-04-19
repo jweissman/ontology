@@ -12,13 +12,12 @@ class Enemy
   property :x, Integer
   property :y,               Integer
   property :last_moved_tick, Integer, default: 0
-  property :status,          Enum[:resting, :moving, :attacking, :cooldown], default: :resting
+  property :status,          Enum[:resting, :moving, :attacking, :cooldown, :dying], default: :resting
 
   property :attack,  Integer, default: 2
   property :defense, Integer, default: 1
   property :hp,      Integer, default: 2
-
-  property :speed,   Integer, default: 8
+  property :speed,   Integer, default: 5
 
   belongs_to :world
 
