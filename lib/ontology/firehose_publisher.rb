@@ -42,7 +42,7 @@ module FirehosePublisher
     #end
   end
 
-  def firehose_producer(firehose_instance="//127.0.0.1:7474")
+  def firehose_producer(firehose_instance="//zephyrFirehose-cerulean.rhcloud.com/")
     @firehose_producer ||= Firehose::Producer.new(firehose_instance)
   end
 
